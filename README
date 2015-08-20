@@ -1,0 +1,27 @@
+**************************************************************************
+*                                                                        *
+*  Visual GoI: Simulate GoI token machine on compiled lambda-terms       * 
+*  Copyright (C) 2015 Yann Hamdaoui                                      * 
+*                                                                        *
+*  This software is free software; you can redistribute it and/or        *
+*  modify it under the terms of the GNU Library General Public           *
+*  License version 2.1, with the special exception on linking            *
+*  described in file LICENSE.                                            *
+*                                                                        *
+*  This software is distributed in the hope that it will be useful,      *
+*  but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.                  *
+*                                                                        *
+**************************************************************************
+
+Visual GoI is an OCaml program developped as a research and eductionnal tool to
+parse several variation of lambda-calculus terms (untyped, simply typed, with
+references, concurrent, etc...), translate it (via CBN (t = !a -> a), CBV (t =
+!(a -> a)), ...) to GoI token machine as proof nets or compile it to
+instructions (Krivine, SECD, CBV GoI machine, ...) and finally run the machine
+step by step.
+
+This tool is still at development stage, but is intended to be eventually an
+fully integrated graphical web application (using Js_of_ocaml).
+
+

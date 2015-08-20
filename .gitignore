@@ -1,0 +1,9 @@
+parser/
+temp-moved/
+main.*
+!main.ml
+legacy/
+images/*
+_build/
+.vim-last-repl
+.fuse_hidden*
