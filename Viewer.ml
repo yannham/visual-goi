@@ -63,13 +63,13 @@ module MELLYSToDot =
       let src_t = MELLYS.vertex_get_type src in
       let dst_t = MELLYS.vertex_get_type dst in 
       let src_str = match src_t with
-        | BangBox | BotBox | YBox ->
+        | MELLYS.BangBox | MELLYS.BotBox | MELLYS.YBox ->
           Printf.sprintf "cluster_%d_node_0" src_id
         | _ -> 
           Printf.sprintf "%s_%d" prefix src_id in
       let l = MELLYS.E.label e in
-      let tailport = generate_port l.src_port src_t in
-      let headport = generate_port l.dst_port dst_t in
+      let tailport = generate_port l.MELLYS.src_port src_t in
+      let headport = generate_port l.MELLYS.dst_port dst_t in
       let arrowhead = match src_t,dst_t with
         | (_,MELLYS.End) | (_,MELLYS.Sync) -> "none"
         | _ -> "normal" 

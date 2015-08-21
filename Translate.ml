@@ -118,7 +118,7 @@ module SimplyTypedToMELLYS_CBN =
       | SimplyTyped.TApp(m,n) -> 
         let ctxt' = Hashtbl.create 26 in
         let f,f' = (match (SimplyTyped.type_of_term m) with
-          | Arrow(t,t') when t=(SimplyTyped.type_of_term n) -> 
+          | SimplyTyped.Arrow(t,t') when t=(SimplyTyped.type_of_term n) -> 
             stype_to_formula t, stype_to_formula t'
           | _ -> raise (Invalid_argument("Ill-typed application"))) in
         let r1 = translate ctxt m in
