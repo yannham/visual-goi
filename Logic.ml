@@ -20,7 +20,7 @@ module MELL =
     
       | Not(Par(f,g)) -> Tensor(not_normal_form (Not(f)), not_normal_form (Not(g)))
       | Not(Tensor(f,g)) -> Par(not_normal_form (Not(f)), not_normal_form (Not(g)))
-      | Not(Whynot(f)) -> Bang(not_normal_form (Not(f)))
+      | Not(Whynt(f)) -> Bang(not_normal_form (Not(f)))
       | Not(Bang(f)) -> Whynot(not_normal_form (Not(f)))
       | Not(Not(f)) -> not_normal_form f
     
@@ -30,4 +30,4 @@ module MELL =
       | Bang(f) -> Bang(not_normal_form f)
   end
 
-(* end *)
+(* end *

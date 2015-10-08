@@ -25,11 +25,11 @@ module SIAM : sig
     type stack = stack_elt list
     type dir = Up | Down | Stable
 
-    type term = Net.t 
+    type term = MELLYS.t 
     type code = term
-    type token = {pos : Net.edge; dir : dir; s : stack; e :
+    type token = {pos : MELLYS.edge; dir : dir; s : stack; e :
       exp_sign list}
-    type token_state = (Net.vertex * term) list * token
+    type token_state = (MELLYS.vertex * term) list * token
     type state = token_state list
 
     exception NoTransitionException of term * token_state
@@ -55,11 +55,11 @@ struct
     type stack = stack_elt list
     type dir = Up | Down | Stable
 
-    type term = Net.t
+    type term = MELLYS.t
     type code = term
-    type token = {pos : Net.edge; dir : dir; s : stack; e :
+    type token = {pos : MELLYS.edge; dir : dir; s : stack; e :
       exp_sign list}
-    type token_state = (Net.vertex * term) list * token
+    type token_state = (MELLYS.vertex * term) list * token
     type state = token_state list
 
     exception NoTransitionException of term * token_state
@@ -67,12 +67,12 @@ struct
    
     (* let compile t = [(-1,t)] *)
 
-    let is_initial_token (bs,tkn) = match (bs, Net.E.dst t.pos, t.dir) with 
-      | [],Net.end_vertex,Up -> true
+    let is_initial_token (bs,tkn) = match (bs, MELLYS.E.dst t.pos, t.dir) with 
+      | [],MELLYS.end_vertex,Up -> true
       | _ -> false
 
-    let is_final_token (bs,tkn) = match (bs, Net.E.dst t.pos, t.dir) with 
-      | [],Net.end_vertex,Down -> true
+    let is_final_token (bs,tkn) = match (bs, MELLYS.E.dst t.pos, t.dir) with 
+      | [],MELLYS.end_vertex,Down -> true
       | _ -> false
 
     let is_initial = List.for_all is_initial_token
@@ -82,53 +82,56 @@ struct
       let t = match stack with 
         | [] -> term 
         | (_,t)::ts -> t in
-      let source,dest = Net.E.src tkn.pos, Net.E.dst tkn.pos in
-      let src_prems,src_concl = Net.premises t source, Net.conclusions t source in
-      let dst_prems,dst_concl = Net.premises t dest, Net.conclusions t dest in
-      match tkn.dir, Net.vertex_type source, Net.vertex_type dest with
-        | Up,AxiomType,_ -> 
+      let source,dest = MELLYS.E.src tkn.pos, MELLYS.E.dst tkn.pos in
+      let src_prems,src_concl = MELLYS.premises t source, MELLYS.conclusions t source in
+      let dst_prems,dst_concl = MELLYS.premises t dest, MELLYS.conclusions t dest in
+      match tkn.dir, MELLYS.vertex_type source, MELLYS.vertex_type dest with
+        | Up,Axiom,_ -> 
           ( 
-          match src_concl with
-            | [x;y] when x.src_prt=tkn.pos.src_prt ->
-              (stack, {tkn with pos=y; dir=Down})
-            | [y;x] when x.src_prt=tkn.pos.src_prt -> 
-              (stack, {tkn with pos=y; dir=Down})
-            | [_;_] -> raise (NoTransitionException(term,(stack,tkn)))
-            | _ -> raise (MELLYS.IllTypedNetException("An axiom node must have exactly
-            two conclusions",t))
-          ) 
-        | Down,_,CutType ->
-          ( 
-          let new_pos = match dst_prems with
-            | [x;y] when x.dst_prt=tkn.pos.dst_prt -> y
-            | [y;x] when x.dst_prt=tkn.pos.dst_prt -> y
-            | [_;_] -> raise (NoTransitionException(term,(stack,tkn)))
-            | _ -> raise (MELLYS.IllTypedNetException("An cut node must have exactly
-            two premises",t)) in
-          (stack, {tkn with pos=new_pos;dir=Up})
+          try
+            let new_pos = List.find ((<>) tkn.pos) src_concl in
+            (term, (stack,{tkn with pos=new_pos; dir=Down}))
+          with Not_Found ->
+            raise (MELLYS.IllTypedNetException("An axiom node must have exactly"
+            ^" two conclusions",t))
           )
-        | Up,ParrType,_ ->
+        | Down,_,Cut->
           (
-          match tkn,src_prems with
-            | {pos={label=Parr(f,g)}; s=Left::xs},
-              ([{dst_prt=1} as p;_]
-               | [_;{dst_prt=1} as p])
-            | {pos={label=Parr(f,g)}; s=Right::xs},
-              ([{dst_prt=2} as p;_]
-               | [_;{dst_prt=2} as p]) -> 
-                (stack, {tkn with pos=p; s=xs})
-            | {s=(Left | Right)::xs},_ -> raise (MELLYS.IllTypedNetException("A
-              parr node must have exactly two premises on port 1 and 2 and one
-              conclusion typed accordingly",t))
+          try
+            let new_pos = List.find((<>) e) dst_prems in
+            (term, (stack,{tkn with pos=new_pos; dir=Up}))
+          with Not_Found ->
+            raise (MELLYS.IllTypedNetException("An cut node must have exactly"
+            ^" two premises",t))
+          )
+        | Up,Par,_ ->
+          (
+          let finder p = fun e -> ((=) p e.dst_port) in
+          let port,xs = match tkn.s with
+            | Left::xs -> (MELLYS.LeftPort,xs)
+            | Right::xs -> (MELLYS.RightPort,xs)
             | _ -> raise (NoTransitionException(term,(stack,tkn)))
-          )
-        | Down,_,ParrType ->
+          in
           (
-          let where = if tkn.pos.dst_prt=1 then Left else Right in
+          try
+            let new_e = List.find (finder port) dst_prems in
+            (term, (stack, {tkn with pos=new_pos; s = xs}))
+          with Not_Found ->
+            raise (MELLYS.IllTypedNetException("A par node must have"
+            ^" exactly two premises on port 1 and 2 and one conclusion typed"
+            ^" accordingly",t))
+        | Down,_,Par ->
+          (
+          let side = match tkn.pos.dst_prt with
+            | LeftPort -> Left
+            | RightPort -> Right
+            | _ -> raise (MELLYS.IllTypedNetException("A par node must have"
+              ^" two premises on port LeftPort and RightPort",t))
+          in
           match dst_concl with
-            | [p] -> (stack, {tkn with pos=p; s=where::tkn.s})
-            | _ -> raise (MELLYS.IllTypedNetException("Parr nodes must have
-              exactly one conclusion",t))
+            | [new_pos] -> (stack, {tkn with pos=new_pos; s=side::tkn.s})
+            | _ -> raise (MELLYS.IllTypedNetException("A par node must have"
+              ^" exactly one conclusion",t))
           )
         | Up,TensorType,_ ->
           (
