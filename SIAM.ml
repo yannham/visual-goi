@@ -85,13 +85,14 @@ struct
       let source,dest = MELLYS.E.src tkn.pos, MELLYS.E.dst tkn.pos in
       let src_prems,src_concl = MELLYS.premises t source, MELLYS.conclusions t source in
       let dst_prems,dst_concl = MELLYS.premises t dest, MELLYS.conclusions t dest in
+      let dst_port_filter p = fun e -> ((=) e.dst_port) in
       match tkn.dir, MELLYS.vertex_type source, MELLYS.vertex_type dest with
         | Up,Axiom,_ -> 
           ( 
           try
             let new_pos = List.find ((<>) tkn.pos) src_concl in
             (term, (stack,{tkn with pos=new_pos; dir=Down}))
-          with Not_Found ->
+          with Not_found ->
             raise (MELLYS.IllTypedNetException("An axiom node must have exactly"
             ^" two conclusions",t))
           )
@@ -100,26 +101,25 @@ struct
           try
             let new_pos = List.find((<>) e) dst_prems in
             (term, (stack,{tkn with pos=new_pos; dir=Up}))
-          with Not_Found ->
+          with Not_found ->
             raise (MELLYS.IllTypedNetException("An cut node must have exactly"
             ^" two premises",t))
           )
         | Up,Par,_ ->
           (
-          let finder p = fun e -> ((=) p e.dst_port) in
           let port,xs = match tkn.s with
             | Left::xs -> (MELLYS.LeftPort,xs)
             | Right::xs -> (MELLYS.RightPort,xs)
             | _ -> raise (NoTransitionException(term,(stack,tkn)))
           in
-          (
           try
-            let new_e = List.find (finder port) dst_prems in
+            let new_e = List.find (dst_port_filter port) src_prems in
             (term, (stack, {tkn with pos=new_pos; s = xs}))
-          with Not_Found ->
+          with Not_found ->
             raise (MELLYS.IllTypedNetException("A par node must have"
             ^" exactly two premises on port 1 and 2 and one conclusion typed"
             ^" accordingly",t))
+          )
         | Down,_,Par ->
           (
           let side = match tkn.pos.dst_prt with
@@ -135,72 +135,79 @@ struct
           )
         | Up,TensorType,_ ->
           (
-          match tkn,src_prems with
-            | {pos={label=Tensor(f,g)}; s=Left::xs},
-              ([{dst_prt=1} as p;_]
-               | [_;{dst_prt=1} as p]) 
-            | {pos={label=Tensor(f,g)}; s=Right::xs},
-              ([{dst_prt=2} as p;_]
-               | [_;{dst_prt=2} as p]) -> 
-              (stack, {tkn with pos=p; s=xs})
-            | {s=(Left | Right)::xs},_ -> raise (MELLYS.IllTypedNetException("A
-              tensor node must have exactly two premises on port 1 and 2 and one
-              conclusion typed accordingly",t))
+          let port,xs = match tkn.s with
+            | Left::xs -> (MELLYS.LeftPort,xs)
+            | Right::xs -> (MELLYS.RightPort,xs)
             | _ -> raise (NoTransitionException(term,(stack,tkn)))
+          in
+          try
+            let new_e = List.find (dst_port_filter port) src_prems in
+            (term, (stack, {tkn with pos=new_pos; s = xs}))
+          with Not_found ->
+            raise (MELLYS.IllTypedNetException("A tensor node must have"
+            ^" exactly two premises on left and right port and one"
+            ^" conclusion typed accordingly",t))
           )
         | Down,_,TensorType ->
           (
-          let where = if tkn.pos.dst_prt=1 then Left else Right in
+          let side = match tkn.pos.dst_prt with
+            | MELLYS.LeftPort -> Left
+            | MELLYS.RightPort -> Right
+            | _ -> raise (MELLYS.IllTypedNetException("A tensor node must have"
+              ^" two premises on port LeftPort and RightPort",t))
+          in
           match dst_concl with
-            | [p] -> (stack, {tkn with pos=p; s=where::tkn.s})
-            | _ -> raise (MELLYS.IllTypedNetException("Tensor nodes must have
-              exactly one conclusion",t))
+            | [new_pos] -> (stack, {tkn with pos=new_pos; s=side::tkn.s})
+            | _ -> raise (MELLYS.IllTypedNetException("A tensor node must have"
+              ^" exactly one conclusion",t))
           )
         | Up,ContractionType,_ ->
           (
-          match tkn,src_prems with
-            | {s=Signature(Left(esig))::xs},
-              ([{dst_prt=1} as p;_]
-               | [_;{dst_prt=1} as p])
-            | {s=Signature(Right(esig))::xs},
-              ([{dst_prt=2} as p;_]
-               | [_;{dst_prt=2} as p]) ->
-              (stack, {tkn with pos=p; s=Signature(esig)::xs}) 
-            | {s=Signature(Left(_) | Right(_))::_}, _ -> 
-              raise (MELLYS.IllTypedNetException("A contraction node must have
-              exactly two premises and one conclusion all typed by the same
-              formula",t))
+          let port,new_s = match tkn.s with
+            | Signature(Left(esig))::xs -> (MELLYS.LeftPort,Signature(esig)::xs)
+            | Signature(Right(esig))::xs -> (MELLYS.RightPort,Signature(esig)::xs)
             | _ -> raise (NoTransitionException(term,(stack,tkn)))
+          in
+          try
+            let new_e = List.find (dst_port_filter port) src_prems in
+            (term, (stack, {tkn with pos=new_pos; s=new_s}))
+          with Not_found -> 
+            raise (MELLYS.IllTypedNetException("A contraction node"
+            ^" must have exactly two premises on left and right port"))
           )
         | Down,_,ContractionType ->
           (
-          let p = match dst_concl with
-            | [c] -> c
-            | _ -> raise (MELLYS.IllTypedNetException("A contraction node must
-              have exactly one conclusion",t)) in
-          match tkn with
-            | {pos={dst_prt=1}; s = Signature(esig)::xs} ->
-              (stack, {tkn with pos=p; s=Signature(Left(esig))::xs}) 
-            | {pos={dst_prt=2}; s = Signature(esig)::xs} ->
-              (stack, {tkn with pos=p; s=Signature(Right(esig))::xs}) 
-            | _ -> raise (NoTransitionException(t,(stack,tkn)))
+          let esig,xs = match tkn.s with
+            | Signature(esig)::xs -> (esig,xs)
+            | _ -> raise (NoTransitionException(term,(stack,tkn)))
+          in
+          let new_s = match tkn.pos.dst_prt with
+            | MELLYS.LeftPort -> Signature(Left(esig))::xs
+            | MELLYS.RightPort -> Signature(Right(esig))::xs
+            | _ -> raise (MELLYS.IllTypedNetException("A contraction node"
+              ^" must have exactly one conclusion"))
+          in
+          match dst_concl with
+            | [new_pos] -> (stack, {tkn with pos=new_pos; s=new_s})
+            | _ -> raise (MELLYS.IllTypedNetException("A contraction must have"
+              ^" exactly one conclusion",t))
           )
         | Up,DerelictionType,_ ->
           (
-          let p = match src_prems with
-            | [p] -> p 
+          let new_e = match src_prems with
+            | [e] -> e 
             | _ -> raise (MELLYS.IllTypedNetException("A dereliction node must
               have exactly one premise",t)) in
-          match tkn with
-            | {s=Signature(Const)::xs} -> (stack, {tkn with pos=p; s=xs})
+          match tkn.s with
+            | Signature(Const)::xs -> (stack, {tkn with pos=new_e; s=xs})
             | _ -> raise (NoTransitionException(term,(stack,tkn)))
           )
         | Down,_,DerelictionType ->
           (
           match dst_concl with
-            | [c] -> (stack, {tkn with pos=c;s=Signature(Const)::tkn.s})
-            | _ -> raise (MELLYS.IllTypedNetException("A dereliction must have
-              exactly one conclusion",t))
+            | [new_e] -> (stack, {tkn with pos=new_e; s=Signature(Const)::tkn.s})
+            | _ -> raise (MELLYS.IllTypedNetException("A dereliction must have"
+              ^" exactly one conclusion",t))
           )
         | Up,SyncType,_ ->
           (
