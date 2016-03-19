@@ -8,9 +8,9 @@
  *)
 
 module type INET_TYPE = sig
-  type port
   type vertex_type
-  type label
+  type label 
+  val default : label
 end
 
 module type INET = sig
@@ -31,7 +31,7 @@ module type INET = sig
     | BotBox
     | YBox*)
 
-  type port
+  type port = AuxPort of int | MainPort
   type vertex_type
 
   (** Label of edges *)
@@ -82,29 +82,25 @@ module type INET = sig
 
   (** Return the list of premises or conclusions of a vertex *)
   val auxiliary_edges : t -> vertex -> edge list
-  val principal_edges: t -> vertex -> edge list
+  val principal_edge : t -> vertex -> edge
+  val sum : t -> t -> t
   (** Return the list of pending conclusions of a net
    * (equivalent to premises t end_vertex) *)
   val net_pending_edges : t -> edge list
 end
 
-module type RED_TYPE =
-  functor (T : INET_TYPE) -> 
-  functor (N : INET with type port = T.port
-    and type vertex_type = T.vertex_type) -> sig
-    val active : N.E.t -> bool 
-    val reduce : N.t -> N.E.t -> N.t 
-  end
+module type REWRITABLE_INET = sig
+  include INET
 
-module type InteractionNet_Sig = 
+  val is_active : E.t -> bool
+  val reduce : t -> E.t -> unit
+end
+
+module type MakeINet_sig =  
   functor (T : INET_TYPE) -> sig
-    include INET with type label := T.label and type port := T.port and type vertex_type :=
+    include INET with type label = {src_port : port; dst_port : port;
+      l : T.label}
+    and type vertex_type = T.vertex_type
+    type label 
       T.vertex_type
-  end
-
-module type RewriteInteractionNet_Sig =
-  functor (T : INET_TYPE) ->
-  functor (R : RED_TYPE) -> sig
-    include INET with type label := T.label and type port := T.port and type
-    vertex_type := T.vertex_type
-  end 
+end
