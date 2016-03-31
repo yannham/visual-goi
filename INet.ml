@@ -5,6 +5,8 @@ module MakeINet : MakeINet_sig = struct
     type label = {src_port : port; dst_port : port; l : T.edge_label}
     type vertex_type = T.vertex_type
 
+    exception InvalidNetException of string
+
     module Vertex_t = struct
       type t = int * vertex_type
       let compare v v' = compare (fst v) (fst v')
@@ -29,15 +31,15 @@ module MakeINet : MakeINet_sig = struct
     let boxes = Hashtbl.create 30
     let end_vertex = (0,End)
 
-    let find_edge_pred pred net =
-      let f e =
+    let find_edge_p_ iterator pred net =
+      let f e = 
         if (pred e) then
           raise (EdgeFound(e))
         else
           ()
       in
       try
-        iter_edges_e f net;
+        iterator f net;
         raise Not_found
       with EdgeFound(e) -> e
 
@@ -65,18 +67,31 @@ module MakeINet : MakeINet_sig = struct
       (v,List.map add_conclusions ccls)
 
     let premises net v =
-      let filter e l =
-        if (E.dst e)=v then e::l else l
-      in fold_edges_e filter net []
+      let filter_succ e l = match E.label e with 
+        {src_port=AuxPort(_)} -> e::l
+        | _ -> l in
+      let filter_pred e l = match E.label e with
+        {dst_port=AuxPort(_)} -> e::l
+        | _ -> l in
+      let l = fold_succ_e filter_succ net [] in
+      fold_pred_e filter_pred net l
 
-    let conclusions net v =
-      let filter e l =
-        if (E.src e)=v then e::l else l
-      in fold_edges_e filter net []
+    let conclusion net v =
+      let filter_succ e a = match E.label e with 
+        {src_port=MainPort} -> e::l
+        | _ -> l in
+      let filter_pred e l = match E.label e with
+        {dst_port=MainPort} -> e::l
+        | _ -> l in
+      let l = fold_succ_e filter_succ net [] in
+      let l = fold_pred_e filter_pred net l in
+      match l with 
+         e::es -> e
+        | [] -> raise (Not_found)
 
-    let net_conclusions net = premises net end_vertex
+    let net_conclusions net = (premises net end_vertex)
 
-    let sum net net' =
+    let merge net net' =
       let v_adder = function
         | (_,End) -> ()
         | v -> add_vertex net v in
@@ -174,7 +189,7 @@ module MELLInteractionNet : REWRITABLE_INET = struct
       | Dereliction
       | Promotion
     type label = Logic.MELL.formula
-    val default = Logic.MELL.Bot 
+    let default = Logic.MELL.Bot 
   end
 
   module INetBase = MakeINet(MELLINetType)
@@ -184,7 +199,7 @@ module MELLInteractionNet : REWRITABLE_INET = struct
     One | Tensor | Promotion -> true
     | _ -> false
 
-  let is_active e =
+  let is_redex e =
     match (vertex_get_type (E.src e), vertex_get_type (E.dst e)) with
       (Bot,One) | (Par,Tensor) | (Contraction,Promotion)
       | (Weakening,Promotion) | (Dereliction,Promotion) -> true
@@ -217,8 +232,14 @@ module MELLInteractionNet : REWRITABLE_INET = struct
               E.create (E.src e2) (E.label e2') (E.src e2') in
           add_edge_e new_e1;
           add_edge_e new_e2
-        | (Contraction,Promotion) when (E.label e).dst_port = AuxPort(0)   
-            
+        | (Contraction,Promotion) when (E.label e).dst_port = AuxPort(0) -> 
+          let content = box_content net dst in
+          let shift = function (_,v_t) -> let () = incr count in (!count,v_t) in
+          let content' = map_vertex shift (copy content)  in
+          let finder 
+          merge net content;
+          merge net content';
+
 
     
 (* end *)

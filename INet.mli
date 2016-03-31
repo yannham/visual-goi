@@ -31,6 +31,8 @@ module type INET = sig
     | BotBox
     | YBox*)
 
+  exception InvalidNetException of string
+
   type port = AuxPort of int | MainPort
   type vertex_type
 
@@ -47,6 +49,7 @@ module type INET = sig
   val create : ?size:int -> unit -> t
   val clear : t -> unit
   val copy : t -> t
+  val copy_shift : t -> t
 
   (** This function does the same as List.find, iterating on edges *)
   val find_edge_pred : (edge -> bool) -> t -> edge
@@ -81,9 +84,9 @@ module type INET = sig
     E.label list -> vertex * edge list
 
   (** Return the list of premises or conclusions of a vertex *)
-  val auxiliary_edges : t -> vertex -> edge list
-  val principal_edge : t -> vertex -> edge
-  val sum : t -> t -> t
+  val premises : t -> vertex -> edge list
+  val conclusion : t -> vertex -> edge
+  val merge : t -> t -> unit 
   (** Return the list of pending conclusions of a net
    * (equivalent to premises t end_vertex) *)
   val net_pending_edges : t -> edge list
@@ -92,7 +95,7 @@ end
 module type REWRITABLE_INET = sig
   include INET
 
-  val is_active : E.t -> bool
+  val is_redex : E.t -> bool
   val reduce : t -> E.t -> unit
 end
 
