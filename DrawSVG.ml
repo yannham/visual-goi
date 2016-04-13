@@ -1,40 +1,50 @@
-open Batteries
+(* open Batteries *)
 open INet
 
 module MakeDrawer (T : INET) : MakeDrawer_sig = struct
-  type canvas
   type direction = Up | Down | Left | Right
   type style = Default
   type context = {x : float; y : float; width : float; height : float;
                   dir : direction; s : style}
 
   type canvas = {content : BatBuffer.t; vertices_pos : (T.vertex, context) BatMap.t} 
+  
+  type point = {x : float; y : float}
 
-  type attr = string * string
-
-  type svg_tree = Node of string * attr list * svg_tree list 
-
-  type svg_ppos_type = Absolute | Relative
+  type svg_pos = Absolute | Relative
 
   type svg_path_point = 
-    MoveTo of float*float
-    | LineTo of float*float
-    | HLineTo of float*float
-    | VLineTo of float*float
-    | CurveTo of float*float*float*float*float*float
-    | SCurveTo of float*float*float*float
-    | QuadTo of float*float*float*float
-    | SQuadTo of float*float
-    | EllipticalArc of (float*float*float*float*float*float*float)
+    | MoveTo of point
+    | LineTo of point
+    | HLineTo of float
+    | VLineTo of float
+    | CurveTo of { x1 : float; y1 : float; x2 : float; y2 : float;
+      x : float; y : float}
+    | SCurveTo of {x2 : float; y2 : float; x : float; y : float} 
+    | QuadTo of {x1 : float; y1 : float; x : float; y : float}
+    | SQuadTo of point 
+    | EllipticalArc of {rx : float; ry : float; x_axis_rotation : float;
+      large_arc_flag : float; sweep_flag : float; x : float; y : float}
     | Close
 
+  type svg_node_type =
+    | Rect of {x : float; y : float; width : float; height : float}
+    | Circle of {cx : float; cy : float; r : float}
+    | Ellipse of {cx : float; cy : float; rx : float; ry : float}
+    | Line of {x1 : float; y1 : float; x2 : float; y2 : float}
+    | Polyline of point list
+    | Polygon of point list 
+    | Path of {points : svg_path_point list; pos : svg_pos}
+    | Group 
+    | Other of string
+
+  type svg_tree = Node of svg_node_type * attr list * svg_tree list 
+  
   let buffer_default_size = 500
 
-  let svg_printf buff d s =
+  let svg_print_deep buff d s =
     BatPrintf.bprintf buff "%s" (BatString.make d ' ');
     BatPrintf.bprintf buff s 
-
-  let svg_attr_printer buff d (x,y) = svg_printf buff d " %s=\"%s\"" x y
 
   let svg_init buff =
     BatPrintf.bprintf buff "<svg xmlns=\"http://www.w3.org/2000/svg\""
@@ -42,24 +52,10 @@ module MakeDrawer (T : INET) : MakeDrawer_sig = struct
 
   let svg_finalize buff =
     BatPrintf.bprintf buff "</svg>"
-
-  let rec svg_write buff d = function
-    Node(s,attrs,[]) ->
-      svg_printf buff d "<%s" s;
-      List.iter (svg_attr_printer buff d);
-      svg_printf buff d "/>\n"
-    | Node(s,attrs,children) ->
-      svg_printf buff d "<%s" e;
-      List.iter (svg_attr_printer buff d);
-      svg_printf buff d ">\n";
-      List.iter (svg_write buff (d+1)) 
-      svg_printf buff d "</%s>\n" e;
-
-
-
+  
   let init () = 
     let c = {content=BatBuffer.create buffer_default_size; vertices_pos = BatMap.empty} in
-    svg_init  c.content;
+    svg_init c.content;
 
   let finalize c =
     svg_finalize c.content;
@@ -68,37 +64,79 @@ module MakeDrawer (T : INET) : MakeDrawer_sig = struct
 
   let to_attr_list = List.map2 (fun x y -> (x, string_of_float y))
 
-  let svg_make_circle ?(attrs=[]) x y r =
-    let l = to_attr_list ["cx";"cy";"r"] [x;y;r] in
-    Node("circle",(l@attrs),[])
+  let attr_list_print buff l =
+    Lister.iter (fun (x,y) -> Printf.bprintf buff " %s=\"%s\"" x y) l
 
-  let svg_make_line ?(attrs=[]) x1 y1 x2 y1 =
-    let l = to_attr_list ["x1";"y1";"x2";"y2"] [x1;y1;x2;y2] in
-    Node("circle",(l@attrs),[])
+  let svg_node_type_str = function
+    Rect _ -> "rect"
+    | Circle _ -> "circle"
+    | Ellipse _ -> "ellipse"
+    | Line _ -> "line"
+    | Polyline _ -> "polyline"
+    | Polygon _ -> "polygon"
+    | Path _ -> "path"
+    | Group -> "group"
+    | Other s -> s
 
-  let svg_make_path ?(attrs=[]) points ppos =
-    let buffer = BatBuffer.create 50 in
-    let l = if ppos=Absolute then BatString.uppercase else (fun x -> x) in
-    let p = BatPrintf.bprintf buffer in
-    let p2 s x y = p " %s %f %f" (l s) x y in
-    let p4 s x1 y1 x2 y2 = p " %s %f %f %f %f" (l s) x1 y1 x2 y2 in
-    let p6 s x1 y1 x2 y2 x3 y3 = p " %s %f %f %f %f %f %f" (l s) x1 y1 x2 y2 x3 y3 in
-    let p7 s x1 x2 x3 x4 x5 x6 x7 = 
-      p " %s %f %f %f %f %f %f %f" (l s) x1 x2 x3 x4 x5 x6 x7 in
-    let writer = function
-      MoveTo(x,y) -> p2 "m" x y
-      | LineTo(x,y) -> p2 "l" x y
-      | HLineTo(x,y) -> p2 "h" x y
-      | VLineTo(x,y) -> p2 "v" x y
-      | CurveTo(x1,y1,x2,y2,x3,y3) -> p6 "c" x1 y1 x2 y2 x3 y3
-      | SCurveTo(x1,y1,x2,y2) -> p4 "s" x1 y1 x2 y2
-      | QuadTo(x1,y1,x2,y2) -> p4 "s" x1 y1 x2 y2
-      | SQuadTo(x,y) -> p2 "t" x y
-      | EllipticalArc(x1,x2,x3,x4,x5,x6,x7) ->
-        p7 "a" x1 x2 x3 x4 x5 x6 x7 
-      | Close -> p " %s" (l "z")
+  let rec svg_print_tree ?(d=0) buff Node(node_type,attrs,children) = 
+    let printer = svg_print_deep buff
+    let node_type_str = svg_node_type_str node_type 
+    printer "<%s" node_type_str 
+    let core_attributes = 
+    match node_type with 
+      Rect {x;y;width;height} ->
+        to_attr_list ["x";"y";"width";"height"] [x;y;width;height]
+      | Circle {cx;cy;r;} ->
+        to_attr_list ["cx";"cy";"r"] [cx;cy;r]
+      | Ellipse {cx;cy;rx;ry} ->
+        to_attr_list ["cx";"cy";"rx";"ry"] [cx;cy;rx;ry]
+      | Line {x1;y1;x2;y2} ->
+        to_attr_list ["x1";"y1";"x2";"y2"] [x1;y1;x2;y2]
+      | Polyline points ->
+        (* TODO *)
+        []
+      | Polygon points ->
+        (* TODO *)
+        []
+      | Path {points;pos} ->
+        [("d",svg_path_str points pos)] 
     in
-    List.iter writer points;
-    Node("path",("d", BatBuffer.content buff)::attrs,[])
+    attr_list_print buff core_attributes;
+    attr_list_print buff attrs;
+    match children with 
+      [] -> printer "/>\n"
+      | _ ->
+        Lister.iter (svg_print_tree (d+1) buff)
+        printer "</%s>\n" node_type_str
 
+  let svg_path_str points pos =
+    let buff = BatBuffer.create 50 in
+    let l = if pos=Absolute then BatString.uppercase else (fun x -> x) in
+    let p = BatPrintf.bprintf buff in
+    let p0 s = printer " %s" (l s) in
+    let p1 s x = printer " %s %f" (l s) x in
+    let p2 s x y = printer " %s %f %f" (l s) x y in
+    let plist = List.iter (printer " %f") in
+    let path_printer = function
+      MoveTo {x;y} -> p2 "m" x y
+      | LineTo {x;y}-> p2 "l" x y
+      | HLineTo x -> p1 "h" x 
+      | VLineTo y -> p1 "v" y 
+      | CurveTo {x1;y1;x2;y2;x;y} ->
+          p0 "c";
+          plist [x1;y1;x2;y2;x;y]
+      | SCurveTo {x2;y2;x2;y2} -> 
+          p0 "s";
+          plist [x2;y2;x;y] 
+      | QuadTo {x1;y1;x;y} -> 
+          p0 "q";
+          plist [x1;y1;x;y]
+      | SQuadTo {x;y} -> p2 "t" x y
+      | EllipticalArc {rx;ry;x_axis_rotation;large_arc_flag;sweep_flag;x;y} ->
+        p0 "a";
+        plist [rx;ry;x_axis_rotation;large_arc_flag;sweep_flag;x;y]
+      | Close -> p0 "z"
+    in
+    List.iter path_printer points;
+    BatBuffer.content buff
 end
