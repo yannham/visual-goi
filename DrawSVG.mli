@@ -7,6 +7,7 @@ module type MakeDrawer_sig =
     type context = {x : float; y : float; width : float; height : float;
     dir : direction; s : style}
 
+
     val init : unit -> canvas
 
     val cell_preferred_size : float * float
